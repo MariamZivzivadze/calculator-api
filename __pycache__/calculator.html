@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Calculator</title>
+<style>
+  :root {
+    --bg: #14181f;
+    --panel: #1c222c;
+    --display-bg: #0e1116;
+    --accent: #ff8a3d;
+    --accent-dim: #b85f24;
+    --text: #eef1f5;
+    --text-dim: #7c8595;
+    --op-bg: #2a3140;
+    --error: #ff5d5d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  .calculator {
+    width: 320px;
+    background: var(--panel);
+    border-radius: 24px;
+    padding: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  .display {
+    background: var(--display-bg);
+    border-radius: 16px;
+    padding: 24px 20px 18px;
+    margin-bottom: 16px;
+    text-align: right;
+    overflow: hidden;
+    position: relative;
+    min-height: 88px;
+  }
+
+  .expression {
+    color: var(--text-dim);
+    font-size: 15px;
+    height: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .result {
+    color: var(--text);
+    font-size: 40px;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .result.pop {
+    animation: pop 0.28s ease;
+  }
+
+  @keyframes pop {
+    0%   { transform: scale(0.85); opacity: 0.3; }
+    60%  { transform: scale(1.04); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  .result.error {
+    color: var(--error);
+    font-size: 22px;
+    font-weight: 400;
+  }
+
+  .status-dot {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.3s ease;
+  }
+
+  .status-dot.live {
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+  }
+
+  .status-dot.down {
+    background: var(--error);
+    box-shadow: 0 0 8px var(--error);
+  }
+
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  button {
+    border: none;
+    border-radius: 14px;
+    font-size: 20px;
+    padding: 18px 0;
+    background: #2c3341;
+    color: var(--text);
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+    font-family: inherit;
+  }
+
+  button:active {
+    transform: scale(0.93);
+  }
+
+  button.op {
+    background: var(--op-bg);
+    color: var(--accent);
+  }
+
+  button.op.selected {
+    background: var(--accent);
+    color: #1c1200;
+  }
+
+  button.equals {
+    background: var(--accent);
+    color: #1c1200;
+    font-weight: 600;
+  }
+
+  button.equals:hover {
+    background: var(--accent-dim);
+  }
+
+  button.wide {
+    grid-column: span 2;
+  }
+
+  button.zero {
+    grid-column: span 2;
+  }
+
+  .loading-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.2s ease;
+  }
+
+  .loading-bar.active {
+    animation: loadbar 0.5s ease-in-out infinite;
+  }
+
+  @keyframes loadbar {
+    0%   { width: 0%; margin-left: 0%; }
+    50%  { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="calculator">
+  <div class="display">
+    <div class="status-dot" id="statusDot" title="Backend status"></div>
+    <div class="loading-bar" id="loadingBar"></div>
+    <div class="expression" id="expression">&nbsp;</div>
+    <div class="result" id="result">0</div>
+  </div>
+
+  <div class="pad">
+    <button onclick="clearAll()">C</button>
+    <button onclick="backspace()">⌫</button>
+    <button class="op" onclick="chooseOp('divide')" id="op-divide">÷</button>
+    <button class="op" onclick="chooseOp('multiply')" id="op-multiply">×</button>
+
+    <button onclick="inputDigit('7')">7</button>
+    <button onclick="inputDigit('8')">8</button>
+    <button onclick="inputDigit('9')">9</button>
+    <button class="op" onclick="chooseOp('subtract')" id="op-subtract">−</button>
+
+    <button onclick="inputDigit('4')">4</button>
+    <button onclick="inputDigit('5')">5</button>
+    <button onclick="inputDigit('6')">6</button>
+    <button class="op" onclick="chooseOp('add')" id="op-add">+</button>
+
+    <button onclick="inputDigit('1')">1</button>
+    <button onclick="inputDigit('2')">2</button>
+    <button onclick="inputDigit('3')">3</button>
+    <button class="equals" onclick="calculate()" style="grid-row: span 2;">=</button>
+
+    <button class="zero" onclick="inputDigit('0')">0</button>
+    <button onclick="inputDigit('.')">.</button>
+  </div>
+</div>
+
+<script>
+  const API_BASE = 'http://127.0.0.1:5000';
+
+  let current = '0';
+  let stored = null;
+  let operation = null;
+
+  const resultEl = document.getElementById('result');
+  const expressionEl = document.getElementById('expression');
+  const statusDot = document.getElementById('statusDot');
+  const loadingBar = document.getElementById('loadingBar');
+
+  const opSymbols = { add: '+', subtract: '−', multiply: '×', divide: '÷' };
+
+  function render() {
+    resultEl.textContent = current;
+    resultEl.classList.remove('error');
+    if (stored !== null && operation) {
+      expressionEl.textContent = `${stored} ${opSymbols[operation]}`;
+    } else {
+      expressionEl.textContent = '\u00a0';
+    }
+  }
+
+  function inputDigit(d) {
+    if (current === '0' && d !== '.') current = d;
+    else if (d === '.' && current.includes('.')) return;
+    else current += d;
+    render();
+  }
+
+  function clearAll() {
+    current = '0';
+    stored = null;
+    operation = null;
+    document.querySelectorAll('.op').forEach(b => b.classList.remove('selected'));
+    render();
+  }
+
+  function backspace() {
+    current = current.length > 1 ? current.slice(0, -1) : '0';
+    render();
+  }
+
+  function chooseOp(op) {
+    if (stored !== null && operation) {
+      calculate(op);
+      return;
+    }
+    stored = current;
+    operation = op;
+    current = '0';
+    document.querySelectorAll('.op').forEach(b => b.classList.remove('selected'));
+    document.getElementById('op-' + op).classList.add('selected');
+    render();
+  }
+
+  async function calculate(nextOp) {
+    if (stored === null || operation === null) return;
+
+    loadingBar.classList.add('active');
+    statusDot.classList.remove('live', 'down');
+
+    try {
+      const response = await fetch(`${API_BASE}/${operation}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ a: parseFloat(stored), b: parseFloat(current) })
+      });
+
+      const data = await response.json();
+      loadingBar.classList.remove('active');
+
+      if (!response.ok) {
+        statusDot.classList.add('down');
+        resultEl.textContent = data.error || 'Error';
+        resultEl.classList.add('error');
+        stored = null;
+        operation = null;
+        document.querySelectorAll('.op').forEach(b => b.classList.remove('selected'));
+        return;
+      }
+
+      statusDot.classList.add('live');
+      let resultNum = data.result;
+      if (Number.isInteger(resultNum)) resultNum = resultNum.toString();
+      else resultNum = parseFloat(resultNum.toFixed(6)).toString();
+
+      current = resultNum;
+      stored = nextOp ? resultNum : null;
+      operation = nextOp || null;
+
+      document.querySelectorAll('.op').forEach(b => b.classList.remove('selected'));
+      if (nextOp) document.getElementById('op-' + nextOp).classList.add('selected');
+
+      render();
+      resultEl.classList.add('pop');
+      setTimeout(() => resultEl.classList.remove('pop'), 300);
+
+    } catch (err) {
+      loadingBar.classList.remove('active');
+      statusDot.classList.add('down');
+      resultEl.textContent = 'Server offline';
+      resultEl.classList.add('error');
+    }
+  }
+
+  // Ping the server on load so the status dot reflects reality immediately
+  fetch(`${API_BASE}/`).then(() => statusDot.classList.add('live'))
+                        .catch(() => statusDot.classList.add('down'));
+
+  // Keyboard support
+  document.addEventListener('keydown', (e) => {
+    if (e.key >= '0' && e.key <= '9') inputDigit(e.key);
+    else if (e.key === '.') inputDigit('.');
+    else if (e.key === '+') chooseOp('add');
+    else if (e.key === '-') chooseOp('subtract');
+    else if (e.key === '*') chooseOp('multiply');
+    else if (e.key === '/') { e.preventDefault(); chooseOp('divide'); }
+    else if (e.key === 'Enter' || e.key === '=') calculate();
+    else if (e.key === 'Backspace') backspace();
+    else if (e.key === 'Escape') clearAll();
+  });
+
+  render();
+</script>
+
+</body>
+</html>
